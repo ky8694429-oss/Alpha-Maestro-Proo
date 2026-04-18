@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محاضراتي | MOHADARATI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --bg: #05070a; --glass: rgba(255,255,255,0.05); --gold: #ffd700; --blue: #00a3ff; --text: #e6edf3; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Cairo', sans-serif; overflow-x: hidden; }
+        
+        .glass { background: var(--glass); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        input, select, button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px; border: 1px solid #333; background: #000; color: #fff; font-size: 16px; }
+        button { background: var(--blue); border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { filter: brightness(1.2); }
+        
+        #login-gate, #app-container, #admin-panel, #video-overlay, #expiry-msg { position: fixed; inset: 0; z-index: 1000; display: none; background: var(--bg); }
+        #login-gate { display: flex; align-items: center; justify-content: center; }
+        .login-box { width: 90%; max-width: 400px; text-align: center; }
+        
+        /* Video Player */
+        .watermark { position: absolute; pointer-events: none; color: rgba(255,255,255,0.15); font-size: 20px; font-weight: bold; z-index: 9999; }
+        .btn-speed { background: var(--gold); color: #000; width: auto; padding: 5px 15px; }
+        
+        /* Message Box */
+        .msg-box { background: #2c0000; border: 2px solid #ff4d4d; color: white; padding: 30px; border-radius: 20px; text-align: center; }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+    <div id="login-gate">
+        <div class="glass login-box">
+            <h1 style="color:var(--blue);">محاضراتي</h1>
+            <input type="text" id="access-code" placeholder="أدخل كود التفعيل">
+            <button onclick="validateAccess()">دخول للمنصة</button>
+            <p onclick="openAdmin()" style="color:var(--gold); cursor:pointer;">دخول الإدارة</p>
+        </div>
+    </div>
+
+    <div id="expiry-msg" style="align-items: center; justify-content: center;">
+        <div class="msg-box">
+            <h2>⚠️ تنبيه هام</h2>
+            <p>لقد انتهت صلاحية الكود الخاص بك. يرجى التواصل مع الدعم للحصول على كود جديد.</p>
+            <button onclick="localStorage.clear(); location.reload();">الخروج</button>
+        </div>
+    </div>
+
+    <div id="app-container" style="padding: 20px;">
+        <h1 style="text-align:center;">المواد الدراسية</h1>
+        <div id="courses-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;"></div>
+    </div>
+
+    <div id="admin-panel" style="padding: 20px; overflow-y: auto;">
+        <button onclick="document.getElementById('admin-panel').style.display='none'">إغلاق اللوحة</button>
+        <h2>لوحة التحكم</h2>
+        <input type="text" id="admin-course-name" placeholder="اسم الكورس">
+        <button onclick="addCourse()">إضافة كورس</button>
+        <hr>
+        <select id="course-selector" onchange="loadLecturesAdmin()"></select>
+        <input type="text" id="lec-title" placeholder="عنوان المحاضرة">
+        <input type="text" id="lec-url" placeholder="رابط الفيديو">
+        
+        <h4>روابط PDF (4)</h4>
+        <div id="pdfs"><input type="text" class="pdf-link" placeholder="PDF 1"><input type="text" class="pdf-link" placeholder="PDF 2"><input type="text" class="pdf-link" placeholder="PDF 3"><input type="text" class="pdf-link" placeholder="PDF 4"></div>
+        
+        <h4>روابط الواجب (7)</h4>
+        <div id="hws"><input type="text" class="hw-link" placeholder="واجب 1"><input type="text" class="hw-link" placeholder="واجب 2"><input type="text" class="hw-link" placeholder="واجب 3"><input type="text" class="hw-link" placeholder="واجب 4"><input type="text" class="hw-link" placeholder="واجب 5"><input type="text" class="hw-link" placeholder="واجب 6"><input type="text" class="hw-link" placeholder="واجب 7"></div>
+        
+        <button onclick="addLecture()" style="background:var(--gold); color:#000;">نشر المحاضرة</button>
+    </div>
+
+    <div id="video-overlay">
+        <div style="padding: 10px; display: flex; gap: 10px;">
+            <button onclick="closeVideo()" style="width: auto;">إغلاق</button>
+            <button class="btn-speed" onclick="alert('يجب تعديل سرعة الفيديو من إعدادات مشغل يوتيوب نفسه')">4x السرعة</button>
+        </div>
+        <div id="wm" class="watermark"></div>
+        <iframe id="main-player" width="100%" height="90%" allowfullscreen></iframe>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBOwJ8AqSVblU-r7ujMnUnZpjnb1aBTIOg",
+            authDomain: "mohadraty-7747a.firebaseapp.com",
+            projectId: "mohadraty-7747a",
+            storageBucket: "mohadraty-7747a.firebasestorage.app",
+            messagingSenderId: "8428711650",
+            appId: "1:8428711650:web:4defa98e402a73653af8bb",
+            measurementId: "G-322KDP520G",
+            databaseURL: "https://mohadraty-7747a-default-rtdb.firebaseio.com"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // نظام الأكواد
+        function validateAccess() {
+            const code = document.getElementById('access-code').value;
+            const isHour = code.startsWith('mm#');
+            const isMonth = code.startsWith('xx#');
+            if(isHour || isMonth) {
+                const duration = isHour ? 3600000 : 2592000000;
+                localStorage.setItem('auth', JSON.stringify({ code, start: Date.now(), duration }));
+                location.reload();
+            } else alert("كود خاطئ!");
+        }
+
+        // فحص الانتهاء
+        setInterval(() => {
+            const auth = JSON.parse(localStorage.getItem('auth'));
+            if(auth && (Date.now() - auth.start > auth.duration)) {
+                document.getElementById('expiry-msg').style.display = 'flex';
+                document.getElementById('app-container').style.display = 'none';
+            }
+        }, 1000);
+
+        // الإدارة
+        function openAdmin() { if(prompt("باسورد:") === "admin2026##") document.getElementById('admin-panel').style.display = 'block'; }
+        
+        function addCourse() { db.ref('courses').push({ name: document.getElementById('admin-course-name').value }); alert("تم!"); }
+
+        function addLecture() {
+            const cid = document.getElementById('course-selector').value;
+            db.ref('lectures/'+cid).push({
+                title: document.getElementById('lec-title').value,
+                url: document.getElementById('lec-url').value,
+                pdfs: [...document.querySelectorAll('.pdf-link')].map(i=>i.value),
+                hws: [...document.querySelectorAll('.hw-link')].map(i=>i.value)
+            });
+            alert("تم الرفع!");
+        }
+
+        // عرض المحتوى
+        function loadContent() {
+            db.ref('courses').on('value', snap => {
+                const grid = document.getElementById('courses-grid');
+                const sel = document.getElementById('course-selector');
+                grid.innerHTML = ''; sel.innerHTML = '';
+                snap.forEach(c => {
+                    grid.innerHTML += `<div class="glass"><h3>${c.val().name}</h3><button onclick="showLecs('${c.key}')">عرض المحاضرات</button></div>`;
+                    sel.innerHTML += `<option value="${c.key}">${c.val().name}</option>`;
+                });
+            });
+        }
+
+        function showLecs(cid) {
+            db.ref('lectures/'+cid).on('value', snap => {
+                const grid = document.getElementById('courses-grid');
+                grid.innerHTML = '<button onclick="location.reload()">رجوع</button>';
+                snap.forEach(l => {
+                    grid.innerHTML += `<div class="glass"><h3>${l.val().title}</h3><button onclick="play('${l.val().url}')">شاهد</button></div>`;
+                });
+            });
+        }
+
+        function play(url) {
+            const auth = JSON.parse(localStorage.getItem('auth'));
+            const wm = document.getElementById('wm');
+            wm.innerText = auth.code;
+            document.getElementById('main-player').src = url.includes('?') ? url+'&autoplay=1' : url+'?autoplay=1';
+            document.getElementById('video-overlay').style.display = 'block';
+            setInterval(() => {
+                wm.style.top = Math.random()*80 + '%';
+                wm.style.left = Math.random()*80 + '%';
+            }, 2000);
+        }
+
+        function closeVideo() { document.getElementById('video-overlay').style.display = 'none'; }
+
+        // حماية
+        document.addEventListener('keydown', e => { if(e.key === 'PrintScreen') alert("محظور!"); });
+
+        window.onload = () => { if(localStorage.getItem('auth')) { document.getElementById('login-gate').style.display = 'none'; document.getElementById('app-container').style.display = 'block'; loadContent(); } };
+    </script>
+</body>
+</html>
